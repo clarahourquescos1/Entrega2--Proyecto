@@ -1,0 +1,182 @@
+-- Creación de vistas
+select Motivo_Reclamo, costo from listareclamos
+where costo>5000 and costo<10000;
+
+Create view costoreclamos_vw  as
+ (select Motivo_Reclamo, costo from listareclamos
+where costo>5000 and costo<10000); 
+
+select ID_Motivo, ID_Calle, reiteracion from reclamos 
+where reiteracion=2;
+
+Create view Reclamosreiteracion2 as (select ID_Motivo, ID_Calle, reiteracion from reclamos 
+where reiteracion=2);
+
+select Motivo_reclamo, Reiteracion
+from listareclamos join reclamos 
+on listareclamos.ID_Motivo = reclamos.ID_Motivo;
+
+Create view Motivoreiteracion_vw as (select Motivo_reclamo, Reiteracion
+from listareclamos join reclamos 
+on listareclamos.ID_Motivo = reclamos.ID_Motivo);
+
+select nombre,apellido, documento
+from nombresclientes
+order by apellido asc; 
+
+create view nombresordenados_vw as (select nombre,apellido, documento
+from nombresclientes
+order by apellido asc); 
+
+select count(ID_Motivo) 
+from listareclamos
+where costo> 10000;
+
+create view costosuperior_vw as (select count(ID_Motivo) 
+from listareclamos
+where costo> 10000);
+
+
+
+
+-- Creación de funciones 
+
+select count(ID_Motivo)
+from reclamos
+where reiteracion=6
+group by (reiteracion); 
+
+delimiter //
+CREATE FUNCTION `Cantreiteracion` (reite int) 
+returns int
+deterministic
+begin 
+	declare nreiteracion int; 
+    
+    set nreiteracion =( select count(ID_Motivo) as nreiteracion
+						From reclamos
+						where  reiteracion=reite 
+						group by (reiteracion)
+						);
+	Return nreiteracion;
+   End //
+
+select Cantreiteracion (1) as nreiteracion; 
+
+delimiter //
+CREATE FUNCTION `Costo_idtipoM` (ID_T_M int) 
+returns int
+deterministic
+begin 
+	declare ctotalIDTIPOM int; 
+    
+    set ctotalIDTIPOM =( select sum(costo) as ctotalIDTIPOM
+						From listareclamos
+						where  ID_Tipo_M= ID_T_M
+						group by (ID_Tipo_M)
+						);
+	Return ctotalIDTIPOM;
+   End //
+
+
+SELECT Costo_idtipoM (30) AS ctotalIDTIPOM; 
+
+
+
+
+
+
+-- Creación de procedimientos 
+
+DELIMITER &&  
+CREATE PROCEDURE sort_tabla_listareclamos (IN campo_order varchar (255), IN tipo_orden varchar(255) )  
+BEGIN  
+	SET @query = CONCAT ('SELECT *
+FROM listareclamos ORDER BY (',campo_order,')',tipo_orden);
+    PREPARE stmt FROM @query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;  
+END &&  
+DELIMITER ;
+
+DELIMITER &&  
+CREATE PROCEDURE insert_data_nombresclientes (IN documento_new int, IN apellido_new varchar(255), in nombre_new varchar(255) )  
+BEGIN  
+	insert into nombresclientes(documento,apellido,nombre) values (documento_new, apellido_new,nombre_new);
+END &&  
+DELIMITER ; 
+
+
+-- Creación de Triggers
+
+-- Auditoria de insert/ update tabla listareclamos: teniendo en cuenta el usuario, fecha, hora
+drop table if exists Log_auditoria;
+Create table if not exists Log_auditoria 
+(id_log int auto_increment, 
+nombre_accion varchar (20), 
+nombre_tabla varchar (20), 
+usuario varchar (20), 
+fecha date, 
+primary key (id_log));
+
+DELIMITER &&  
+Create trigger TRG_LOG_listareclamos after insert on listareclamos
+for each row
+begin
+
+insert into Log_auditoria (nombre_accion, nombre_tabla, usuario, fecha)
+values ('INSERT','listareclamos',current_user(),now());
+end && 
+DELIMITER ;
+
+DELIMITER &&  
+Create trigger TRG_LOG_listareclamos_update after update on listareclamos
+for each row
+begin
+
+insert into Log_auditoria (nombre_accion, nombre_tabla, usuario, fecha)
+values ('UPDATE','listareclamos',current_user(),now());
+end && 
+DELIMITER ;
+
+-- Auditoria de delete/update tabla reclamos
+
+DROP TABLE IF EXISTS reclamosArchivos;
+CREATE TABLE reclamosArchivos (
+    ID_reclamos INT PRIMARY KEY AUTO_INCREMENT,
+    numero_reclamo INT,
+    deletedAt TIMESTAMP DEFAULT NOW()
+);
+DELIMITER $$
+
+CREATE TRIGGER before_reclamos_delete
+BEFORE DELETE
+ON reclamos FOR EACH ROW
+BEGIN
+    INSERT INTO reclamosArchivos(numero_reclamo)
+    VALUES(OLD.ID_Motivo);
+END$$    
+
+DELIMITER ;
+
+
+drop table if exists Movimientos_reclamos;
+Create table if not exists Movimientos_reclamos 
+(id_log int auto_increment, 
+nombre_accion varchar (20), 
+nombre_tabla varchar (20), 
+usuario varchar (20), 
+fecha date, 
+campo_modificado varchar (20),
+primary key (id_log));
+
+DELIMITER &&  
+Create trigger TRG_LOG_reclamos_update after update on reclamos
+for each row
+begin
+
+insert into Movimientos_reclamos (nombre_accion, nombre_tabla, usuario, fecha, hora, campo_modificado)
+values ('UPDATE','reclamos',current_user(),now(),current_time(),old.id_motivo);
+end && 
+DELIMITER ;
+
